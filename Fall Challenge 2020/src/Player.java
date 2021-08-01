@@ -1,3 +1,4 @@
+import java.io.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
@@ -6,33 +7,13 @@ import static java.lang.Thread.sleep;
 
 class Player {
 
-    public static void main(String args[]) throws InterruptedException {
-        Scanner in = new Scanner(System.in);
+    public static void main(String args[]) throws InterruptedException, IOException {
+        Reader r = new Reader();
         Inventory inv = new Inventory();
+        Action[] actionList = new Action[1];
         while (true) {
             long startTime = System.currentTimeMillis();
-            int actionCount = in.nextInt();
-            List<Action> actionList = new ArrayList<>();
-            List<Action> actionBrewList = new ArrayList<>();
-            List<Action> actionCastList = new ArrayList<>();
-            for (int i = 0; i < actionCount; i++){
-                Action a = new Action(in.nextInt(), ActionType.valueOf(in.next()),
-                                      new int[]{in.nextInt(), in.nextInt(), in.nextInt(),
-                                              in.nextInt()},
-                                      in.nextInt(), in.nextInt(), in.nextInt(), in.nextInt() > 0,
-                                      in.nextInt() > 0);
-                if (a.type == ActionType.OPPONENT_CAST) continue;
-                else if (a.type == ActionType.BREW) actionBrewList.add(a);
-                else actionCastList.add(a);
-                actionList.add(a);
-            }
-            //System.err.println("ActionList: " + actionList);
-            for (int i = 0; i < 1; i++){//TODO less then 2 to get second player
-                inv.items = new int[]{in.nextInt(), in.nextInt(), in.nextInt(), in.nextInt()};
-                inv.score = in.nextInt();
-            }
-            if (in.hasNextLine()) in.nextLine();//TODO skip second player
-            if (in.hasNextLine()) in.nextLine();
+            actionList = readAction(r, actionList, inv);
             System.err.println("InitTime: " + (System.currentTimeMillis() - startTime) + " ms");
             /*
             long millis = 70 - (System.currentTimeMillis() - startTime);
@@ -79,13 +60,94 @@ class Player {
         }
     }
 
+    static void readAndParseInput(BufferedReader reader, Action[] actionList, Inventory inv) throws IOException {
+        int actionCount = Integer.parseInt(reader.readLine());
+        actionList = new Action[actionCount];
+        for (int i = 0; i < actionCount; i++){
+            String[] value = reader.readLine().split(" ");
+            if (value[1].equals("OPPONENT_CAST")) continue;
+            Action a = new Action(Integer.parseInt(value[0]), ActionType.valueOf(value[1]),
+                                  new int[]{Integer.parseInt(value[2]), Integer.parseInt(
+                                          value[3]), Integer.parseInt(value[4]), Integer.parseInt(
+                                          value[5])}, Integer.parseInt(value[6]),
+                                  Integer.parseInt(value[7]), Integer.parseInt(value[8]),
+                                  Integer.parseInt(value[9]) > 0, Integer.parseInt(value[10]) > 0);
+            actionList[i] = a;
+        }
+        //System.err.println("ActionList: " + actionList);
+        for (int i = 0; i < 1; i++){//TODO less then 2 to get second player
+            String[] value = reader.readLine().split(" ");
+            for (int j = 0; j < 4; j++){
+                inv.items[j] = Integer.parseInt(value[0]);
+            }
+            inv.score = Integer.parseInt(value[4]);
+        }
+        reader.readLine();
+    }
 
-    static Action valueActions(Inventory inv, List<Action> actionList) {
-        double[] resValue = valueResources(inv, actionList);
+    static Action[] readAction(Reader r, Action[] actionList, Inventory inv) throws IOException {
+        int actionCount = r.nextInt();
+        actionList = new Action[actionCount];
+        for (int i = 0; i < actionCount; i++){
+            Action a = new Action(r.nextInt(), ActionType.valueOf(r.readString()),
+                                  new int[]{r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt()},
+                                  r.nextInt(), r.nextInt(), r.nextInt(), r.nextInt() > 0,
+                                  r.nextInt() > 0);
+            if (a.type == ActionType.OPPONENT_CAST) continue;
+            actionList[i] = a;
+        }
+        for (int i = 0; i < 1; i++){//TODO less then 2 to get second player
+            for (int j = 0; j < 4; j++)
+                inv.items[j] = r.nextInt();
+            inv.score = r.nextInt();
+        }
+        r.readLine();
+        System.err.println("readAction list: " + Arrays.toString(actionList));
+        return actionList;
+    }
+
+    static void readInput(BufferedReader r, Action[] actionList, Inventory inv) throws IOException {
+        StringTokenizer st = new StringTokenizer(r.readLine());
+        int actionCount = Integer.parseInt(st.nextToken());
+        actionList = new Action[actionCount];
+        for (int i = 0; i < actionCount; i++){
+            st = new StringTokenizer(r.readLine());
+            Action a = new Action(Integer.parseInt(st.nextToken()),
+                                  ActionType.valueOf(st.nextToken()),
+                                  new int[]{Integer.parseInt(st.nextToken()), Integer.parseInt(
+                                          st.nextToken()), Integer.parseInt(
+                                          st.nextToken()), Integer.parseInt(st.nextToken())},
+                                  Integer.parseInt(st.nextToken()),
+                                  Integer.parseInt(st.nextToken()),
+                                  Integer.parseInt(st.nextToken()),
+                                  Integer.parseInt(st.nextToken()) > 0,
+                                  Integer.parseInt(st.nextToken()) > 0);
+            if (a.type == ActionType.OPPONENT_CAST) continue;
+            actionList[i] = a;
+        }
+        //System.err.println("ActionList: " + actionList);
+        for (int i = 0; i < 1; i++){//TODO less then 2 to get second player
+            st = new StringTokenizer(r.readLine());
+            for (int j = 0; j < 4; j++){
+                inv.items[j] = Integer.parseInt(st.nextToken());
+            }
+            inv.score = Integer.parseInt(st.nextToken());
+        }
+        st = new StringTokenizer(r.readLine());
+        //st = new StringTokenizer(r.readLine());
+        //r.readLine();
+        //r.readLine();
+    }
+
+
+    static Action valueActions(Inventory inv, Action[] actionList) {
+        System.err.println("Value action list:" + Arrays.toString(actionList));
+        double[] resValue = valueResources(inv , actionList);
         Action bestAction = null;
         int steps = 0;
         double actionValue = 0;
         for (Action action: actionList){
+            if(action == null || action.type == ActionType.LEARN) continue;
             if (inv.isEnoughResources(action.delta) &&
                 ((!(action.type == ActionType.CAST)) || inv.isEnoughSpace(action))) {
                 int newSteps = action.type == ActionType.BREW ? 1 : action.castable ? 2 : 3;
@@ -117,21 +179,22 @@ class Player {
     }
 
 
-    static double[] valueResources(Inventory inv, List<Action> actionList) {
+    static double[] valueResources(Inventory inv, Action[] actionList) {
         double[] resourceValue = new double[]{0.0, 1.0, 1.0, 1.0};
         for (Action action: actionList){
-            if (action.type != ActionType.BREW) continue;
+            System.err.println("Value res action : "  + action);
+            if (action == null ||action.type != ActionType.BREW) continue;
             int[] value = inv.getMissingItems(action.delta);
             double sum = Math.abs(Arrays.stream(value).sum());
-            /*System.err.println(
+            System.err.println(
                     "missing items for id: " + action.id + " : " + Arrays.toString(value) +
-                    " sum: " + sum);*/
-            //System.err.println("Action price: " + action.price);
+                    " sum: " + sum);
+            System.err.println("Action price: " + action.price);
             for (int j = 0; j < 4; j++){
                 if (value[j] < 0) {
-                    /*System.err.println(
+                    System.err.println(
                             "Setting value in resource i: " + j + " value: " + action.price / sum +
-                            " max: " + Math.max(resourceValue[j], action.price / sum));*/
+                            " max: " + Math.max(resourceValue[j], action.price / sum));
                     resourceValue[j] = Math.max(resourceValue[j], action.price / sum);
                 }
             }
@@ -236,8 +299,6 @@ class Player {
         }
 
         public int[] getMissingItems(int[] delta) {
-
-
             return IntStream.range(0, 4).map(i -> Math.min(delta[i] + items[i], 0)).toArray();
         }
 
@@ -298,6 +359,77 @@ class Player {
     }
 
     enum ActionType {
-        BREW, REST, CAST, OPPONENT_CAST, WAIT, NONE
+        BREW, REST, CAST, OPPONENT_CAST, LEARN, WAIT, NONE
+    }
+
+    static class Reader {
+        final private int BUFFER_SIZE = 1 << 16;
+        private DataInputStream din;
+        private byte[] buffer;
+        private int bufferPointer, bytesRead;
+
+        public Reader() {
+            din = new DataInputStream(System.in);
+            buffer = new byte[BUFFER_SIZE];
+            bufferPointer = bytesRead = 0;
+        }
+
+        public Reader(String file_name) throws IOException {
+            din = new DataInputStream(new FileInputStream(file_name));
+            buffer = new byte[BUFFER_SIZE];
+            bufferPointer = bytesRead = 0;
+        }
+
+        public String readString() throws IOException {
+            byte[] buf = new byte[64]; // line length
+            int cnt = 0, c;
+            while ((c = read()) != -1) {
+                if (c == '\n' || c == ' ') {
+                    if (cnt != 0) break;
+                    else continue;
+                }
+                buf[cnt++] = (byte) c;
+            }
+            return new String(buf, 0, cnt);
+        }
+
+        public String readLine() throws IOException {
+            byte[] buf = new byte[64]; // line length
+            int cnt = 0, c;
+            while ((c = read()) != -1) {
+                if (c == '\n') {
+                    if (cnt != 0) break;
+                    else continue;
+                }
+                buf[cnt++] = (byte) c;
+            }
+            return new String(buf, 0, cnt);
+        }
+
+        public int nextInt() throws IOException {
+            int ret = 0;
+            byte c = read();
+            while (c <= ' ') c = read();
+            boolean neg = (c == '-');
+            if (neg) c = read();
+            do ret = ret * 10 + c - '0'; while ((c = read()) >= '0' && c <= '9');
+            if (neg) return -ret;
+            return ret;
+        }
+
+        private void fillBuffer() throws IOException {
+            bytesRead = din.read(buffer, bufferPointer = 0, BUFFER_SIZE);
+            if (bytesRead == -1) buffer[0] = -1;
+        }
+
+        private byte read() throws IOException {
+            if (bufferPointer == bytesRead) fillBuffer();
+            return buffer[bufferPointer++];
+        }
+
+        public void close() throws IOException {
+            if (din == null) return;
+            din.close();
+        }
     }
 }
