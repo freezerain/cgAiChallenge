@@ -16,20 +16,20 @@ class Player {
             readAction(r, actionList, inv);
             System.err.println("InitTime: " + (System.currentTimeMillis() - startTime) + " ms");
             Action a = valueActionList(inv, actionList);
-            if (a == null) System.out.println("WAIT Waiting - null Action");
+            if (a == null) System.out.println("REST Resting - null Action");
             else if (a.type == ActionType.BREW)
                 System.out.println("BREW " + a.id + " Brewing id: " + a.id + " score: " + a.price);
             else if (a.type == ActionType.LEARN)
                 System.out.println("LEARN " + a.id + " Learning id: " + a.id);
             else if (a.type == ActionType.CAST) {
-                if (a.repeatable) {
-                    System.out.println("CAST " + a.id + " " + a.repeatN + " Casting id: " + a.id);
-                } else if (a.castable) {
-                    System.out.println("CAST " + a.id + " Casting id: " + a.id);
+                if (a.castable) {
+                    if (a.repeatable) System.out.println(
+                            "CAST " + a.id + " " + a.repeatN + " Casting id: " + a.id);
+                    else System.out.println("CAST " + a.id + " Casting id: " + a.id);
                 } else {
                     System.out.println("REST Resting to cast id: " + a.id);
                 }
-            } else System.out.println("WAIT Waiting ActionType unknown");
+            } else System.out.println("REST Resting ActionType unknown");
             System.err.println("EndTime: " + (System.currentTimeMillis() - startTime) + " ms");
         }
     }
@@ -62,20 +62,16 @@ class Player {
         Action bestAction = null;
         int steps = 0;
         double actionValue = 0;
-
-
         for (Action action: actionList){
-            if (action.type == ActionType.BREW) {
-                if (inv.isEnoughResources(action.delta)) {
-                    int newSteps = 1;
-                    double newValue = valueAction(action, resValue);
-                }
-            }
-            //TODO
-            if (inv.isEnoughResources(action.delta) &&
-                ((!(action.type == ActionType.CAST)) || inv.isEnoughSpace(action.delta))) {
-                int newSteps = action.type == ActionType.BREW ? 1 : action.castable ? 2 : 3;
-                double newValue = valueAction(action, resValue);
+            //TODO ReadAHEAD TAX
+          if (inv.isEnoughResources(action.type ==
+                                      ActionType.LEARN ? new int[]{action.tomeIndex*-1, 0, 0, 0} :
+                                              action.delta) &&
+                (action.type != ActionType.CAST || inv.isEnoughSpace(action.delta))) {
+                int newSteps = action.type == ActionType.BREW ? 1 :
+                        (!action.castable) || action.type == ActionType.LEARN ? 3 : 2;
+                double newValue = valueAction(action, resValue, inv);
+                if(action.type == ActionType.LEARN) newValue+= action.taxCount*resValue[0];
                 if (bestAction == null || actionValue / steps < newValue / newSteps) {
                     bestAction = action;
                     steps = newSteps;
@@ -83,18 +79,31 @@ class Player {
                 }
             }
         }
-
-
+        System.err.println("ResValue: " + Arrays.toString(resValue));
+        System.err.println(bestAction != null ? "BestAction " + bestAction : "Best action = null!");
         return bestAction;
     }
 
 
-    static double valueAction(Action a, double[] resValue) {
+    static double valueAction(Action a, double[] resValue, Inventory inv) {
         if (a.type == ActionType.BREW) return a.price / 1.0;
         else {
             double value = 0.0;
             for (int i = 0; i < 4; i++){
-                value += a.delta[i] * resValue[i] * (a.repeatable ? resValue[i + 4] : 1);
+                value += a.delta[i] * resValue[i];
+            }
+            if (a.repeatable) {
+                int maxRepeat = 1;
+                for (int i = 0; i < 4; i++){
+                    if (a.delta[i] < 1 || resValue[i + 4] < 1) continue;
+                    maxRepeat = Math.max(maxRepeat,
+                                         ((int) resValue[i + 4]) + a.delta[i] - 1 / a.delta[i]);
+                }
+                int repeatN = Math.min(maxRepeat, inv.howManyRepeatable(a.delta));
+                System.err.println("value Action: " + a);
+                System.err.println("repeat min:" + maxRepeat + " howManyRepeat" + inv.howManyRepeatable(a.delta));
+                value *= repeatN;
+                a.repeatN = repeatN;
             }
             return value;
         }
@@ -107,16 +116,21 @@ class Player {
             if (action == null || action.type != ActionType.BREW) continue;
             int[] missingItems = inv.getMissingItems(action.delta);
             double sum = Arrays.stream(missingItems).sum();
-            resourceValue[0] = sum;
+            //System.err.println("valRes Action id: " + action.id + " type: " + action.type);
+            //System.err.println("valRes missingItems: " + Arrays.toString(missingItems));
             for (int j = 0; j < 4; j++){
-                if (missingItems[j] < 0) {
-                    if (resourceValue[j] < action.price / sum ||
-                        resourceValue[j + 4] < missingItems[j]) {
-                        resourceValue[j] = action.price / sum;
+                if (missingItems[j] > 0) {
+                    //System.err.println("if resValue: " + resourceValue[j] +" resCount: "+ resourceValue[j + 4] +" price: "+ action.price + " sum: "+ sum +" missingCount: "+ missingItems[j]);
+                    double pricePerRes = action.price / sum;
+                    //System.err.println("if value*counter: " + resourceValue[j] * resourceValue[j + 4] + " price/sum*count: " + pricePerRes * missingItems[j]);
+                    
+                    if (resourceValue[j] < pricePerRes || resourceValue[j] * resourceValue[j + 4] < pricePerRes * missingItems[j]) {
+                        resourceValue[j] = pricePerRes;
                         resourceValue[j + 4] = missingItems[j];
                     }
                 }
             }
+            //System.err.println("Changed resVal: " + Arrays.toString(resourceValue));
         }
         return resourceValue;
     }
@@ -125,17 +139,18 @@ class Player {
         int[] items = new int[5];
 
         public int howManyRepeatable(int[] delta) {
+            //TODO Debug this here is a bug 
             int sum = 0;
             int divisor = Integer.MAX_VALUE;
             for (int i = 0; i < 4; i++){
-                if (delta[i] < 0) divisor = Math.min(divisor, items[i+1] / Math.abs(delta[i]));
-                if (delta[i] > 0) sum += delta[i];
+                if (delta[i] < 0) divisor = Math.min(divisor, items[i + 1] / Math.abs(delta[i]));
+                if (delta[i] != 0) sum += delta[i];
             }
-            return sum==0? sum : Math.min(divisor, 10 - items[0] / sum);
+            return sum == 0 ? divisor : Math.min(divisor, (10 - items[0]) / sum);
         }
 
         public boolean isEnoughSpace(int[] delta) {
-            int itemsCount = Arrays.stream(delta).sum();
+            int itemsCount = Arrays.stream(delta)/*.filter(i -> i>0)*/.sum();
             return items[0] + itemsCount <= 10;
         }
 
@@ -173,6 +188,14 @@ class Player {
             this.taxCount = taxCount;
             this.castable = castable;
             this.repeatable = repeatable;
+        }
+
+        @Override
+        public String toString() {
+            return "Action{" + "id=" + id + ", type=" + type + ", delta=" + Arrays.toString(delta) +
+                   ", price=" + price + ", tomeIndex=" + tomeIndex + ", taxCount=" + taxCount +
+                   ", castable=" + castable + ", repeatable=" + repeatable + ", repeatN=" +
+                   repeatN + '}';
         }
     }
 
